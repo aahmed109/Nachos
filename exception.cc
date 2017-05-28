@@ -67,7 +67,7 @@ void processCreator(void *arg)
 }
 
 void ExitProcess()
-{
+{	//need to do something that i am not sure about yet
 	syscallLock->Acquire();
 
 	int size = machine->pageTableSize;
@@ -196,7 +196,7 @@ ExceptionHandler(ExceptionType which)
 	}
 
 	currentThread->space->loadIntoFreePage(addr, physicalPage);
-    	//ExitProcess();
+    	ExitProcess();
     } 
     else if(which == ReadOnlyException)
     {

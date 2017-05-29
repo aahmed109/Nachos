@@ -39,7 +39,7 @@ class AddrSpace {
 					// address space
     OpenFile *exec;
 
-    NoffHeader *noffH; //not sure if pointer or not
+    NoffHeader noffH; //not sure if pointer or not
     
 };
 

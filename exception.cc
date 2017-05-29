@@ -71,9 +71,12 @@ void ExitProcess()
 	syscallLock->Acquire();
 
 	int size = machine->pageTableSize;
-	for(int i = 0; i < size; ++i)
+	for(int i = 0; i < size; ++i){
+		if(machine->pageTable[i].valid){
 		memoryManager->FreePage(machine->pageTable[i].physicalPage);
-	processTable->Release(currentThread->id);
+		}
+	}
+	processTable->Release(currentThread->id); //need to check something here
 
 	printf("exited with exit code %d\n", machine->ReadRegister(4));
 	syscallLock->Release();
@@ -183,20 +186,22 @@ ExceptionHandler(ExceptionType which)
     else if(which == PageFaultException)
     {
     	printf("PageFaultException\n");
-	int addr = machine->ReadRegister(39);
-	int vpn = addr/PageSize; //PageSize may not be available, look for correct header file
+	int addr = machine->ReadRegister(39); //faulting address
+	int vpn = addr/PageSize;
 	int physicalPage = -1;
 	if(memoryManager->IsAnyPageFree()){
+		printf("got free page\n");
 		physicalPage = memoryManager->AllocPage(); //not totally sure if this is the correct 'if' condition
 	}
 
 	else{
+		printf("did not get free page\n");
 		//will force to free a page
 		//will do this later
 	}
 
 	currentThread->space->loadIntoFreePage(addr, physicalPage);
-    	ExitProcess();
+    	//ExitProcess();
     } 
     else if(which == ReadOnlyException)
     {

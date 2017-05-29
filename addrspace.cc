@@ -65,16 +65,18 @@ SwapHeader (NoffHeader *noffH)
 AddrSpace::AddrSpace(OpenFile *executable)
 {
     //NoffHeader noffH;	//maybe i'll have to remove it
+    
     unsigned int i, j, size;
     exec = executable;
     executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
-    if ((noffH->noffMagic != NOFFMAGIC) && 
-		(WordToHost(noffH->noffMagic) == NOFFMAGIC))
-    	SwapHeader(noffH);
-    ASSERT(noffH->noffMagic == NOFFMAGIC);
+    if ((noffH.noffMagic != NOFFMAGIC) && 
+		(WordToHost(noffH.noffMagic) == NOFFMAGIC))
+    	SwapHeader(&noffH);
+	
+    ASSERT(noffH.noffMagic == NOFFMAGIC);
 
 // how big is address space?
-    size = noffH->code.size + noffH->initData.size + noffH->uninitData.size 
+    size = noffH.code.size + noffH.initData.size + noffH.uninitData.size 
 			+ UserStackSize;	// we need to increase the size
 						// to leave room for the stack
     numPages = divRoundUp(size, PageSize);
@@ -191,7 +193,7 @@ AddrSpace::InitRegisters()
 //----------------------------------------------------------------------
 // AddrSpace::loadIntoFreePage
 //
-//	Not sure yet what it does
+//	loads faulty page addr to free physical page
 //----------------------------------------------------------------------
 
 int
@@ -203,52 +205,63 @@ AddrSpace::loadIntoFreePage(int addr, int physicalPageNo){
 
 	/*not sure if the following code segment should be written here*/
 
-	if(addr>noffH->code.virtualAddr && addr<noffH->code.virtualAddr+noffH->code.size){
+	if(addr>noffH.code.virtualAddr && addr<noffH.code.virtualAddr+noffH.code.size){
 		//Find CodeOffset, means how many pages addr from the virtual base
-		int codeOffset = (addr - noffH->code.virtualAddr)/PageSize;
+		int codeOffset = (addr - noffH.code.virtualAddr)/PageSize;
 		//Find how many bytes can actually we read from the code segment
-		int a = noffH->code.size-codeOffset*PageSize;
+		int a = noffH.code.size-codeOffset*PageSize;
 		int codeSize = (a<PageSize)?a:PageSize;
-		//Load the codeSize amount of data in 
-		exec->ReadAt(&(machine->mainMemory[pageTable[vpn].physicalPage * codeSize]), codeSize, codeOffset); //not sure about the first 'codeSize' and 'codeOffset'
+		//Load the codeSize amount of data in
+		memoryLock->Acquire(); 
+		exec->ReadAt(&(machine->mainMemory[pageTable[vpn].physicalPage * codeSize]), codeSize, noffH.code.inFileAddr + codeSize); //not sure about the 'codeSize'
 
-		if(codeSize < PageSize){	//overlapping case			
-			//int dataOffset = (addr - noffH->initData.virtualAddr)/PageSize;
-			//int b = noffH->initData.size-dataOffset*PageSize;
-			//int dataSize = (b<PageSize)?b:PageSize;
-			
+		if(codeSize < PageSize){	//overlapping case, i guess i am making mistake in overlapping cases
+			printf("inside?\n");
+			int dataOffset = (addr - noffH.initData.virtualAddr)/PageSize;
+			int b = noffH.initData.size-dataOffset*PageSize;
+			int dataSize = (b<PageSize)?b:PageSize;
+			exec->ReadAt(&(machine->mainMemory[pageTable[vpn].physicalPage * dataSize]), dataSize, noffH.initData.inFileAddr + codeSize + dataSize); //not sure about the PageSize-codeSize
 		}
+		memoryLock->Release();
 	}
 
-	if(addr>noffH->initData.virtualAddr && addr<noffH->initData.virtualAddr+noffH->initData.size){
+	else if(addr>noffH.initData.virtualAddr && addr<noffH.initData.virtualAddr+noffH.initData.size){
 		//Find CodeOffset, means how many pages addr from the virtual base
-		int dataOffset = (addr - noffH->initData.virtualAddr)/PageSize;
+		int dataOffset = (addr - noffH.initData.virtualAddr)/PageSize;
 		//Find how many bytes can actually we read from the code segment
-		int a = noffH->initData.size-dataOffset*PageSize;
+		int a = noffH.initData.size-dataOffset*PageSize;
 		int dataSize = (a<PageSize)?a:PageSize;
-		//Load the codeSize amount of data in 
-		exec->ReadAt(&(machine->mainMemory[pageTable[vpn].physicalPage * dataSize]), dataSize, dataOffset); //not sure about the first 'dataSize' and 'dataOffset'
+		//Load the codeSize amount of data in
+		memoryLock->Acquire(); 
+		exec->ReadAt(&(machine->mainMemory[pageTable[vpn].physicalPage * dataSize]), dataSize, noffH.initData.inFileAddr + dataSize); //not sure about the first 'dataSize' and 'dataOffset'
 
 		if(dataSize < PageSize){	//overlapping case			
-			//int dataOffset = (addr - noffH->initData.virtualAddr)/PageSize;
-			//int b = noffH->initData.size-dataOffset*PageSize;
-			//int dataSize = (b<PageSize)?b:PageSize;
-			
+			printf("mara mara\n");
+			int uninitDataOffset = (addr - noffH.uninitData.virtualAddr)/PageSize;
+			int b = noffH.uninitData.size-uninitDataOffset*PageSize;
+			int uninitDataSize = (b<PageSize)?b:PageSize;
+			bzero(&machine->mainMemory[pageTable[vpn].physicalPage * uninitDataSize], uninitDataSize);
 		}
+		memoryLock->Release();
 	}
 
-	if(addr>=noffH->uninitData.virtualAddr && addr<noffH->uninitData.virtualAddr+noffH->uninitData.size){
+	else if(addr>noffH.uninitData.virtualAddr && addr<noffH.uninitData.virtualAddr+noffH.uninitData.size){
 		//zero out the memory
-		int uninitDataOffset = (addr - noffH->uninitData.virtualAddr)/PageSize;
-		int a = noffH->uninitData.size-uninitDataOffset*PageSize;
+		printf("mara mara mara\n");
+		int uninitDataOffset = (addr - noffH.uninitData.virtualAddr)/PageSize;
+		int a = noffH.uninitData.size-uninitDataOffset*PageSize;
 		int uninitDataSize = (a<PageSize)?a:PageSize;
-
+		memoryLock->Acquire();
 		bzero(&machine->mainMemory[pageTable[vpn].physicalPage * uninitDataSize], uninitDataSize); //not sure about 'uninitDataSize'
+		memoryLock->Release();
 	}
 
 	else{
-		bzero(&machine->mainMemory[pageTable[vpn].physicalPage * PageSize], PageSize);
-	}	
+		printf("Naj Sak Mew\n");
+		memoryLock->Acquire();
+		bzero(&machine->mainMemory[pageTable[vpn].physicalPage * addr], addr);
+		memoryLock->Release();
+	}
 	return 0;
 }
 //----------------------------------------------------------------------
